@@ -1,0 +1,40 @@
+#!/bin/bash
+
+walk_back_filepath() {
+    local filepath=$1
+    local n_dirs_to_walk_back=$2
+    for i in $(seq 1 ${n_dirs_to_walk_back})
+    do
+        filepath=$(dirname ${filepath})
+    done
+    echo ${filepath}
+}
+
+# get relative resource paths
+echo "Parsing paths and setting up working directories..."
+BIN_DIR=$(cd $(dirname $0) && pwd)
+TARGET_DIR="$(walk_back_filepath ${APP_DIR} 1)/layers"
+mkdir $TARGET_DIR
+
+# make temp dirs
+WORKING_DIR=$(mktemp -d)
+PKG_DIR="${WORKING_DIR}"/python
+mkdir ${PKG_DIR}
+
+echo "Removing previous ${TARGET_DIR}/lambda-python-pkg-layer.zip file if it exists..."
+rm "${TARGET_DIR}/lambda-python-pkg-layer.zip"
+
+echo "Pip installing requirements.txt (in docker) to temp pkg directory..."
+docker run \
+    -v ${TERRAFORM_MODULES_DIR}:/terraform_modules_dir \
+    -v ${PKG_DIR}:/pkg_dir \
+    "lambci/lambda:build-python3.6" \
+    /bin/sh -c "cd /terraform_modules_dir/${APP_DIR_RELATIVE} && pip install -r requirements.txt -t /pkg_dir; exit"
+
+echo "Zipping pkg directory to ${TARGET_DIR}/lambda-python-pkg-layer.zip..."
+cd ${WORKING_DIR} && zip -r "${TARGET_DIR}/lambda-python-pkg-layer.zip" .
+
+echo "Cleaning up..."
+rm -rf "$WORKING_DIR"
+
+echo "DONE"
